@@ -321,3 +321,44 @@ It transforms raw telecom data into actionable business decisions by combining:
 - Profit Optimization
 
 The final result is a deployable system capable of delivering measurable financial impact and improving customer retention strategies in real-world telecom environments.
+
+
+## Local setup and reproducibility notes
+
+### Run the included Streamlit application
+
+From a clone of this repository:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+streamlit run app.py
+```
+
+The app resolves model artifacts relative to `app.py`, so it does not depend on the shell's current working directory. The serialized files in `artifacts/` are loaded with `joblib`; only run them if you trust their source, because pickle-based formats can execute code when deserialized. Library versions are not pinned in this repository, and model compatibility across scikit-learn or estimator versions is not guaranteed.
+
+### Re-run the training notebook
+
+The IBM Telco churn CSV is **not included** in this repository. Obtain a copy from an authorized source and point the notebook at it before running the cells:
+
+```bash
+python -m pip install -r requirements-notebook.txt
+export CHURN_DATA_PATH=/path/to/churn_prediction.csv
+jupyter notebook "Telecom Customer Churn Prediction System.ipynb.ipynb"
+```
+
+The notebook defaults to `churn_prediction.csv` in its current working directory when `CHURN_DATA_PATH` is unset. Keep customer data local; do not commit datasets or credentials. The training and notebook dependencies are listed in `requirements-notebook.txt`, but are intentionally not version-pinned because this repository does not include a known-good environment or lockfile.
+
+### Validation limitations
+
+The committed notebook outputs, figures, model files, benchmark table, and business-impact statements are repository contents, not independently reproduced results. Without the source dataset and a pinned training environment, this change does not validate model quality, reported metrics, ROI, or the compatibility of the pre-trained artifacts. Treat the application as a demonstration until you reproduce and review the training with your approved data and environment.
+
+
+## Tests
+
+Run the focused feature-engineering tests with:
+
+```bash
+python -m unittest discover -s tests -v
+```
