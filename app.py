@@ -1,99 +1,15 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import joblib
+from pathlib import Path
 
-pipeline = joblib.load("artifacts/churn_pipeline.pkl")
-config = joblib.load("artifacts/model_config.pkl")
+from features import engineer_features
+
+APP_DIR = Path(__file__).resolve().parent
+pipeline = joblib.load(APP_DIR / "artifacts" / "churn_pipeline.pkl")
+config = joblib.load(APP_DIR / "artifacts" / "model_config.pkl")
 
 threshold = config["optimal_threshold"]
-
-def engineer_features(df):
-
-    df = df.copy()
-
-    df['AvgChargePerMonth'] = (
-        df['TotalCharges'] / (df['tenure'] + 1)
-    )
-
-    df['CLV'] = (
-        df['MonthlyCharges'] * df['tenure']
-    )
-
-    df['ChargeIncreaseRatio'] = (
-        df['MonthlyCharges'] /
-        np.maximum(df['AvgChargePerMonth'], 1)
-    )
-
-    df['IsNewCustomer'] = (
-        df['tenure'] < 12
-    ).astype(int)
-
-    df['IsMidTerm'] = (
-        (df['tenure'] >= 12) &
-        (df['tenure'] < 36)
-    ).astype(int)
-
-    df['IsLoyalCustomer'] = (
-        df['tenure'] >= 36
-    ).astype(int)
-
-    df['TenureSquared'] = (
-        df['tenure'] ** 2
-    )
-
-    service_cols = [
-        'PhoneService',
-        'MultipleLines',
-        'OnlineSecurity',
-        'OnlineBackup',
-        'DeviceProtection',
-        'TechSupport',
-        'StreamingTV',
-        'StreamingMovies'
-    ]
-
-    temp = df[service_cols].replace({
-        'Yes': 1,
-        'No': 0,
-        'No internet service': 0,
-        'No phone service': 0
-    })
-
-    df['TotalServices'] = temp.sum(axis=1)
-
-    df['ServiceAdoptionRate'] = (
-        df['TotalServices'] / len(service_cols)
-    )
-
-    monthly_charge_threshold = 70
-
-    df['HighMonthlyCharge'] = (
-        df['MonthlyCharges'] > monthly_charge_threshold
-    ).astype(int)
-
-    df['NoSecurityBundle'] = (
-        (df['OnlineSecurity'] == 'No') &
-        (df['DeviceProtection'] == 'No')
-    ).astype(int)
-
-    df['MonthToMonthContract'] = (
-        df['Contract'] == 'Month-to-month'
-    ).astype(int)
-
-    df['ElectronicCheckPay'] = (
-        df['PaymentMethod'] == 'Electronic check'
-    ).astype(int)
-
-    df['ChurnRiskScore'] = (
-        df['IsNewCustomer'] * 3 +
-        df['MonthToMonthContract'] * 3 +
-        df['ElectronicCheckPay'] * 2 +
-        df['NoSecurityBundle'] * 1 +
-        df['HighMonthlyCharge'] * 1
-    )
-
-    return df
 
 st.set_page_config(
     page_title="Telecom Churn Prediction",
