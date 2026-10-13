@@ -1,15 +1,17 @@
-# Enterprise-Grade Telecom Customer Churn Prediction & Retention Intelligence System
+# Telecom Customer Churn Prediction System
+
+> Engineering review status: source and inference paths have been repaired and statically validated. The training notebook has **not** been rerun in this repository because the IBM Telco CSV is not bundled and heavy training dependencies are not installed in the audit environment.
 
 ## Overview
 
 This project presents an end-to-end **Machine Learning system for Telecom Customer Churn Prediction**, designed to identify customers who are likely to leave a telecom service provider. The system enables proactive retention strategies and supports data-driven business decisions.
 
-The solution is built with a production mindset, including:
+The solution contains a reproducible training notebook and a Streamlit inference UI. It is not a claim that the checked-in artifacts have been retrained from this checkout. It includes:
 - Full data pipeline (cleaning → feature engineering → modeling → evaluation)
 - Multiple machine learning models
 - Hyperparameter optimization
 - Explainability using SHAP
-- Threshold tuning for business optimization
+- Validation-set threshold tuning for business optimization (the test set remains untouched for final reporting)
 - Profit-based business impact analysis
 - Ready-to-deploy inference pipeline
 
@@ -30,8 +32,8 @@ The objective of this system is to:
 ## Dataset
 
 **Source:** IBM Telco Customer Churn Dataset  
-**Size:** 7,043 customers  
-**Features:** 20 original features  
+**Reference dataset:** IBM Telco Customer Churn CSV (not included in this repository)
+**Expected schema:** 7,043 rows and 20 original features when using the commonly distributed IBM file
 
 Includes:
 - Customer demographics
@@ -195,6 +197,8 @@ Full interpretability framework:
 ---
 ## Model Evaluation & Final Benchmark
 
+The historical benchmark table below is retained as project context only; it is not recomputed by the current checkout. Do not treat it as a newly verified result until the notebook is rerun against a known dataset snapshot and dependency lockfile.
+
 - Best Model: Tuned CatBoost
 - Evaluation Metric: ROC-AUC
 - Threshold Optimization: Improved Recall significantly
@@ -216,7 +220,7 @@ The following table summarizes the performance of all trained machine learning m
 ---
 
 ### Final Selected Model
-**CatBoost (Tuned)** was selected as the production model due to:
+The notebook is configured to select and export the tuned CatBoost pipeline, but the checked-in artifact should be regenerated after the repaired notebook is run. **CatBoost (Tuned)** was selected as the production model due to:
 - Best balance between Precision and Recall
 - Strong generalization performance
 - Stability under cross-validation
@@ -321,3 +325,33 @@ It transforms raw telecom data into actionable business decisions by combining:
 - Profit Optimization
 
 The final result is a deployable system capable of delivering measurable financial impact and improving customer retention strategies in real-world telecom environments.
+
+
+## Reproducible setup and data
+
+1. Create an environment with Python 3.10+ and install dependencies:
+
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
+
+2. Obtain the IBM Telco Customer Churn CSV separately. The repository intentionally does not fabricate or redistribute training data.
+
+3. Set the input path before running the notebook:
+
+   ```bash
+   export CHURN_DATA_PATH=/absolute/path/to/churn_prediction.csv
+   jupyter notebook "Telecom Customer Churn Prediction System.ipynb.ipynb"
+   ```
+
+   If the variable is not set, the notebook looks for `data/churn_prediction.csv` relative to the notebook working directory and raises an actionable `FileNotFoundError` when it is absent.
+
+The repaired notebook uses a stratified train/validation/test split. Numeric imputation is learned inside the training pipeline, threshold selection uses validation data, and the test split is used only for final evaluation/business-impact reporting. Existing serialized artifacts are legacy outputs from the original project; because no training data is bundled, they are not silently replaced during this review.
+
+## Streamlit inference
+
+```bash
+streamlit run app.py
+```
+
+The app resolves artifacts relative to `app.py`, validates required input fields and the configured threshold, and reports a clear error if artifacts are missing or incompatible.
