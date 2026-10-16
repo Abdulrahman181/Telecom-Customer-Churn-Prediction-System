@@ -87,3 +87,36 @@ Not performed, by design/constraint:
 ## Next step for an operator
 
 Install `requirements.txt`, obtain the IBM Telco CSV independently, set `CHURN_DATA_PATH`, run the notebook from the repository root, inspect validation and untouched-test metrics, and only then decide whether to replace the legacy artifacts. Record the dataset hash and resolved dependency versions with that run.
+
+## Second Senior Review
+
+### Scope and evidence
+
+This second pass re-inspected every tracked source/config/test/README file, all notebook code cells and state, Git history/diff, serialized artifact metadata, and the available Python runtime. It did not invent data or metrics. The IBM Telco CSV is still absent, and the environment does not contain CatBoost, LightGBM, XGBoost, imbalanced-learn, Optuna, or SHAP, so full retraining, legacy-pipeline prediction, and Streamlit end-to-end execution remain unverified.
+
+### Additional defects found and fixed
+
+1. **The prior leakage fix was incomplete.** The EDA cell still filled `TotalCharges` with the full-dataset median before `df_clean` was created. That mutation could leak test-distribution information into training. The fill was removed; missing values now remain for the training-only pipeline imputer.
+2. **Notebook runtime failure in risk-score EDA.** `groupby(...)["Churn"].mean()` attempted to average `Yes`/`No` strings. It now explicitly computes the `Yes` rate.
+3. **Training/inference feature drift.** Feature engineering and raw schema checks were duplicated between the notebook and app. New `churn_features.py` is the canonical implementation used by both, with numeric, finite-value, target, category, and required-column validation.
+4. **Ambiguous probability-column ordering.** Both inference paths now require `classes_`, locate class `1` by label, validate probability shape/range/finite values, and reject incompatible artifacts instead of silently assuming column 1 is churn.
+5. **Notebook portability and reproducibility.** Plot and artifact destinations are configurable through `CHURN_OUTPUT_DIR` and `CHURN_ARTIFACT_DIR`; the export config records the input SHA-256, raw schema, feature-engineering version, random seed, and threshold-selection policy. Optuna now uses a seeded sampler.
+6. **Conflicting business calculation.** An obsolete block using a different cost model was removed; the documented cost model is now the single business-impact calculation.
+7. **Insufficient regression coverage.** Added `tests/test_feature_contract.py` for non-mutating feature parity, blank `TotalCharges`, invalid numeric/category rejection, and class-label probability extraction. Static tests now also enforce notebook output/execution hygiene and key leakage/probability contracts.
+
+### Second-pass validation
+
+- `python3 tests/test_static_validation.py`
+- `python3 tests/test_feature_contract.py`
+- `python3 -m unittest discover -s tests -p 'test_*.py'`
+- `python3 -m py_compile app.py churn_features.py tests/*.py`
+- JSON parsing and AST parsing of all 51 notebook code cells; all code-cell outputs empty and execution counts null
+- `git diff --check`
+- Legacy `artifacts/model_config.pkl` loads and contains threshold `0.14`; the legacy pipeline itself was not loaded/predicted because its CatBoost dependency is unavailable
+
+### Remaining risks after the second pass
+
+- The checked-in legacy artifacts predate the canonical module and lack dataset hash/schema/version metadata; they must be regenerated from the repaired notebook before deployment.
+- Full notebook execution and metrics are unverified until the real IBM CSV and declared dependencies are installed.
+- The notebook imports several optional heavy packages at startup and intentionally fails clearly when they are not installed; requirements are not a fully lockfile-pinned environment.
+- Business assumptions (`$780` annual value and `$20` campaign cost) are illustrative and require business-owner approval before operational use.

@@ -12,43 +12,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from churn_features import RAW_COLUMNS, engineer_features, positive_class_probability
+
 ROOT = Path(__file__).resolve().parent
 ARTIFACT_DIR = ROOT / "artifacts"
 PIPELINE_PATH = ARTIFACT_DIR / "churn_pipeline.pkl"
 CONFIG_PATH = ARTIFACT_DIR / "model_config.pkl"
-RAW_COLUMNS = [
-    "gender",
-    "SeniorCitizen",
-    "Partner",
-    "Dependents",
-    "tenure",
-    "PhoneService",
-    "MultipleLines",
-    "InternetService",
-    "OnlineSecurity",
-    "OnlineBackup",
-    "DeviceProtection",
-    "TechSupport",
-    "StreamingTV",
-    "StreamingMovies",
-    "Contract",
-    "PaperlessBilling",
-    "PaymentMethod",
-    "MonthlyCharges",
-    "TotalCharges",
-]
-SERVICE_COLUMNS = [
-    "PhoneService",
-    "MultipleLines",
-    "OnlineSecurity",
-    "OnlineBackup",
-    "DeviceProtection",
-    "TechSupport",
-    "StreamingTV",
-    "StreamingMovies",
-]
-
-
 @st.cache_resource
 def load_artifacts() -> tuple[Any, dict[str, Any]]:
     """Load inference artifacts from paths relative to this file."""
@@ -61,66 +30,26 @@ def load_artifacts() -> tuple[Any, dict[str, Any]]:
         )
     pipeline = joblib.load(PIPELINE_PATH)
     config = joblib.load(CONFIG_PATH)
-    if "optimal_threshold" not in config:
+    if not isinstance(config, dict) or "optimal_threshold" not in config:
         raise ValueError(f"{CONFIG_PATH} does not contain 'optimal_threshold'.")
-    threshold = float(config["optimal_threshold"])
-    if not 0.0 <= threshold <= 1.0:
+    try:
+        threshold = float(config["optimal_threshold"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Configured optimal_threshold must be numeric.") from exc
+    if not np.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
         raise ValueError("Configured optimal_threshold must be between 0 and 1.")
+    if not callable(getattr(pipeline, "predict_proba", None)):
+        raise ValueError("Loaded pipeline does not expose predict_proba.")
+    if getattr(pipeline, "classes_", None) is None:
+        raise ValueError("Loaded pipeline does not expose classes_.")
     return pipeline, config
-
-
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Create the same deterministic features used by the training notebook."""
-    missing = sorted(set(RAW_COLUMNS) - set(df.columns))
-    if missing:
-        raise ValueError(f"Input is missing required columns: {', '.join(missing)}")
-    df = df.copy()
-    df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
-    df["tenure"] = pd.to_numeric(df["tenure"], errors="coerce")
-    df["MonthlyCharges"] = pd.to_numeric(df["MonthlyCharges"], errors="coerce")
-
-    df["AvgChargePerMonth"] = df["TotalCharges"] / (df["tenure"] + 1)
-    df["CLV"] = df["MonthlyCharges"] * df["tenure"]
-    df["ChargeIncreaseRatio"] = df["MonthlyCharges"] / np.maximum(
-        df["AvgChargePerMonth"], 1
-    )
-    df["IsNewCustomer"] = (df["tenure"] < 12).astype(int)
-    df["IsMidTerm"] = ((df["tenure"] >= 12) & (df["tenure"] < 36)).astype(int)
-    df["IsLoyalCustomer"] = (df["tenure"] >= 36).astype(int)
-    df["TenureSquared"] = df["tenure"] ** 2
-
-    service_values = df[SERVICE_COLUMNS].replace(
-        {"Yes": 1, "No": 0, "No internet service": 0, "No phone service": 0}
-    )
-    df["TotalServices"] = service_values.apply(pd.to_numeric, errors="coerce").sum(axis=1)
-    df["ServiceAdoptionRate"] = df["TotalServices"] / len(SERVICE_COLUMNS)
-    df["HighMonthlyCharge"] = (df["MonthlyCharges"] > 70).astype(int)
-    df["NoSecurityBundle"] = (
-        (df["OnlineSecurity"] == "No") & (df["DeviceProtection"] == "No")
-    ).astype(int)
-    df["MonthToMonthContract"] = (df["Contract"] == "Month-to-month").astype(int)
-    df["ElectronicCheckPay"] = (df["PaymentMethod"] == "Electronic check").astype(int)
-    df["ChurnRiskScore"] = (
-        df["IsNewCustomer"] * 3
-        + df["MonthToMonthContract"] * 3
-        + df["ElectronicCheckPay"] * 2
-        + df["NoSecurityBundle"]
-        + df["HighMonthlyCharge"]
-    )
-    return df
 
 
 def predict_customer(customer_data: dict[str, Any]) -> dict[str, Any]:
     """Return probability, thresholded prediction, and a human-readable risk band."""
     pipeline, config = load_artifacts()
     customer_df = engineer_features(pd.DataFrame([customer_data]))
-    probabilities = pipeline.predict_proba(customer_df)
-    classes = list(getattr(pipeline, "classes_", [0, 1]))
-    try:
-        churn_index = classes.index(1)
-    except ValueError as exc:
-        raise ValueError("Loaded pipeline does not expose a positive churn class (1).") from exc
-    probability = float(probabilities[0, churn_index])
+    probability = float(positive_class_probability(pipeline, customer_df)[0])
     threshold = float(config["optimal_threshold"])
     risk = "HIGH" if probability >= 0.7 else "MEDIUM" if probability >= 0.4 else "LOW"
     return {

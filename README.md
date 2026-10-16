@@ -265,7 +265,7 @@ The system is evaluated using a profit-based cost model:
 
 ## 16.Deployment
 
-The system is production-ready and includes:
+The repository contains a deployment-oriented reference implementation, but it is **not certified production-ready from this checkout** because the bundled artifacts are legacy outputs and the training dataset is intentionally absent. Before deployment, regenerate and validate the artifacts with a known dataset snapshot and resolved environment. The implementation includes:
 
 - Trained ML pipeline (`joblib`)
 - Feature engineering function
@@ -355,3 +355,9 @@ streamlit run app.py
 ```
 
 The app resolves artifacts relative to `app.py`, validates required input fields and the configured threshold, and reports a clear error if artifacts are missing or incompatible.
+
+## Canonical input contract
+
+`churn_features.py` is the shared implementation used by the notebook and Streamlit app. It validates the 19 raw IBM Telco feature columns, parses numeric fields without fitting or imputing on inference data, allows blank `TotalCharges` for the training-only imputer, rejects unsupported categories/invalid values, and locates the positive probability by the artifact's class label rather than assuming a column position. Focused contract tests are in `tests/test_feature_contract.py`.
+
+The repaired notebook writes plots to `CHURN_OUTPUT_DIR` (default: current working directory) and artifacts to `CHURN_ARTIFACT_DIR` (default: `artifacts/`). Its model config records the input dataset SHA-256 and feature-contract version. Existing checked-in artifacts do not contain those new metadata fields and should be treated as legacy until regenerated.
